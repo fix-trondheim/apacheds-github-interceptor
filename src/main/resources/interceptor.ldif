@@ -1,0 +1,13 @@
+version: 1
+
+dn: ads-interceptorId=githubInterceptor,ou=interceptors,ads-directoryService
+ Id=default,ou=config
+objectclass: ads-base
+objectclass: top
+objectclass: ads-interceptor
+ads-interceptorclassname: info.jagenberg.tim.apachedsgithub.GithubIntercepto
+ r
+ads-interceptorid: githubInterceptor
+ads-interceptororder: 18
+ads-enabled: TRUE
+

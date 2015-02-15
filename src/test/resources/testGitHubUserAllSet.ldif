@@ -1,0 +1,11 @@
+dn: uid=testGitHubUserAllSet,dc=example,dc=com
+objectClass: githubUser
+objectClass: uidObject
+objectClass: person
+objectClass: top
+cn: Test GitHubUser
+sn: GitHubUser
+uid: testGitHubUserAllSet
+githubOrganizationName: fix-trondheim
+githubTeamName: members
+githubUserName: FIX-TestUser123

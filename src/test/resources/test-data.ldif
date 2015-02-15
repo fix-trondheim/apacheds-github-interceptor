@@ -1,0 +1,44 @@
+version: 1
+
+dn: uid=testGitHubUserAllSet,dc=example,dc=com
+objectClass: githubUser
+objectClass: uidObject
+objectClass: person
+objectClass: top
+cn: Test GitHubUser
+sn: GitHubUser
+uid: testGitHubUserAllSet
+githubOrganizationName: fix-trondheim
+githubTeamName: members
+githubUserName: FIX-TestUser123
+
+dn: uid=testGitHubUserUnSet,dc=example,dc=com
+objectClass: githubUser
+objectClass: uidObject
+objectClass: person
+objectClass: top
+cn: Test GitHubUser
+sn: GitHubUser
+uid: testGitHubUserUnSet
+
+dn: uid=testUser,dc=example,dc=com
+objectClass: uidObject
+objectClass: person
+objectClass: top
+cn: Test User
+sn: User
+uid: testUser
+
+dn: uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com
+objectClass: githubUser
+objectClass: uidObject
+objectClass: person
+objectClass: top
+cn: Test GitHubUser
+sn: GitHubUser
+uid: testGitHubUserAllSetMultiTeam
+githubOrganizationName: fix-trondheim
+githubTeamName: members
+githubTeamName: alumni
+githubUserName: FIX-TestUser123
+

@@ -1,0 +1,8 @@
+dn: uid=testGitHubUserUnSet,dc=example,dc=com
+objectClass: githubUser
+objectClass: uidObject
+objectClass: person
+objectClass: top
+cn: Test GitHubUser
+sn: GitHubUser
+uid: testGitHubUserUnSet

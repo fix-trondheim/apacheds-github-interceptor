@@ -1,0 +1,12 @@
+dn: uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com
+objectClass: githubUser
+objectClass: uidObject
+objectClass: person
+objectClass: top
+cn: Test GitHubUser
+sn: GitHubUser
+uid: testGitHubUserAllSetMultiTeam
+githubOrganizationName: fix-trondheim
+githubTeamName: members
+githubTeamName: alumni
+githubUserName: FIX-TestUser123
