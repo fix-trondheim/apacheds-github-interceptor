@@ -2,6 +2,8 @@
 
 An ApacheDS Interceptor, which synchronizes LDAP membership changes to GitHub organizations.
 
+CI Status: [![Build Status](https://travis-ci.org/fix-trondheim/apacheds-github-interceptor.svg?branch=master)](https://travis-ci.org/fix-trondheim/apacheds-github-interceptor)
+
 ## Installation
 
 Built using Eclipse 4.5 and Maven M2E on Java 8. With this installed, import the project and build it using maven (pom.xml -> Run as -> Maven build ...) with the goal 'package'.
