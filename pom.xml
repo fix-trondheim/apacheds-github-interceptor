@@ -45,6 +45,11 @@
 			<version>2.0.2-beta</version>
 			<scope>test</scope>
 		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-collections4</artifactId>
+			<version>4.0</version>
+		</dependency>
 	</dependencies>
 
 	<description>An ApacheDS Interceptor, which synchronises LDAP membership changes to github organizations.</description>

@@ -1,12 +1,14 @@
 package info.jagenberg.tim.apachedsgithub;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 
+import org.apache.commons.collections4.ListUtils;
 import org.apache.directory.api.ldap.model.entry.Entry;
 import org.apache.directory.api.ldap.model.entry.Modification;
-import org.apache.directory.api.ldap.model.entry.ModificationOperation;
+import org.apache.directory.api.ldap.model.entry.Value;
 import org.apache.directory.api.ldap.model.exception.LdapException;
 import org.apache.directory.server.core.api.interceptor.BaseInterceptor;
 import org.apache.directory.server.core.api.interceptor.context.AddOperationContext;
@@ -67,28 +69,56 @@ public class GithubInterceptor extends BaseInterceptor {
 	public void modify(final ModifyOperationContext modifyContext) throws LdapException {
 		Entry entry = modifyContext.getEntry();
 		if (ObjClassGitHubUser.isObjectClassGitHubUser(entry)) {
+			String oldUser = "";
+			List<String> oldTeams = new ArrayList<>();
+			String oldOrg = "";
 			try {
-				String oldUser = ObjClassGitHubUser.getUser(entry);
-				List<String> oldTeams = ObjClassGitHubUser.getTeams(entry);
-				String oldOrg = ObjClassGitHubUser.getOrg(entry);
-				String newUser = getNewUser(modifyContext.getModItems().stream(), oldUser);
-				List<String> newTeams = getNewTeams(modifyContext.getModItems().stream(), oldTeams);
-				String newOrg = getNewOrg(modifyContext.getModItems().stream(), oldOrg);
-				// TODO this update logic needs to be improved! 
-				boolean somethingChanged = oldUser != newUser || !oldTeams.containsAll(newTeams) || !newTeams.containsAll(oldTeams) || oldOrg != newOrg;
-				if (somethingChanged) {
-					oldTeams.stream().forEach(ot -> gitHubConnector.removeUser(oldUser, ot, oldOrg));
-					newTeams.stream().forEach(nt -> gitHubConnector.addUser(newUser, nt, newOrg));
-				}
+				oldUser = ObjClassGitHubUser.getUser(entry);
 			} catch (IllegalArgumentException e) {
-				// don't interact with github if not all arguments are valid/set
+				LOG.warn("Attribute not set", e);
+			}
+			try {
+				oldTeams = ObjClassGitHubUser.getTeams(entry);
+			} catch (IllegalArgumentException e) {
+				LOG.warn("Attribute not set", e);
+			}
+			try {
+				oldOrg = ObjClassGitHubUser.getOrg(entry);
+			} catch (IllegalArgumentException e) {
+				LOG.warn("Attribute not set", e);
+			}
+			String newUser = getNewUser(modifyContext.getModItems(), oldUser);
+			List<String> newTeams = getNewTeams(oldTeams, modifyContext.getModItems(), oldTeams);
+			String newOrg = getNewOrg(modifyContext.getModItems(), oldOrg);
+			// TODO this update logic needs to be improved!
+			boolean userChanged = oldUser != newUser;
+			List<String> addedTeams = ListUtils.subtract(newTeams, oldTeams);
+			List<String> removedTeams = ListUtils.subtract(oldTeams, newTeams);
+			boolean orgChanged = oldOrg != newOrg;
+			if (userChanged || orgChanged) {
+				updateUserOrgTeams(oldUser, oldTeams, oldOrg, newUser, newTeams, newOrg);
+			} else {
+				if (!addedTeams.isEmpty() || !removedTeams.isEmpty()) {
+					updateUserOrgTeams(oldUser, removedTeams, oldOrg, newUser, addedTeams, newOrg);
+				}
 			}
 		}
 		next(modifyContext);
 	}
 
-	private String getNewUser(Stream<Modification> modItems, String defaultUser) {
-		List<String> newValues = getNewValues(modItems, ObjClassGitHubUser.GITHUB_USER_ATTR_ID, 1);
+	private void updateUserOrgTeams(String oldUser, List<String> oldTeams, String oldOrg, String newUser, List<String> newTeams, String newOrg) {
+		newTeams.stream().forEach(nt -> gitHubConnector.addUser(newUser, nt, newOrg));
+		oldTeams.stream().forEach(ot -> {
+			try {
+				gitHubConnector.removeUser(oldUser, ot, oldOrg);
+			} catch (IllegalArgumentException e) {
+				LOG.warn("Could not remove GitHub user", e);
+			}
+		});
+	}
+
+	private String getNewUser(List<Modification> mods, String defaultUser) {
+		List<String> newValues = getNewValues(new ArrayList<>(), mods, ObjClassGitHubUser.GITHUB_USER_ATTR_ID, 1);
 		if (newValues.isEmpty()) {
 			return defaultUser;
 		} else {
@@ -96,8 +126,8 @@ public class GithubInterceptor extends BaseInterceptor {
 		}
 	}
 
-	private String getNewOrg(Stream<Modification> modItems, String defaultOrg) {
-		List<String> newValues = getNewValues(modItems, ObjClassGitHubUser.GITHUB_ORG_ATTR_ID, 1);
+	private String getNewOrg(List<Modification> mods, String defaultOrg) {
+		List<String> newValues = getNewValues(new ArrayList<>(), mods, ObjClassGitHubUser.GITHUB_ORG_ATTR_ID, 1);
 		if (newValues.isEmpty()) {
 			return defaultOrg;
 		} else {
@@ -105,8 +135,8 @@ public class GithubInterceptor extends BaseInterceptor {
 		}
 	}
 
-	private List<String> getNewTeams(Stream<Modification> modItems, List<String> defaultTeams) {
-		List<String> newValues = getNewValues(modItems, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, Integer.MAX_VALUE);
+	private List<String> getNewTeams(List<String> origTeams, List<Modification> mods, List<String> defaultTeams) {
+		List<String> newValues = getNewValues(origTeams, mods, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, Integer.MAX_VALUE);
 		if (newValues.isEmpty()) {
 			return defaultTeams;
 		} else {
@@ -114,28 +144,27 @@ public class GithubInterceptor extends BaseInterceptor {
 		}
 	}
 
-	private List<String> getNewValues(Stream<Modification> modItems, String oid, int max) {
-		List<String> newValues = new ArrayList<>();
-		Stream<Modification> userMods = modItems.filter(mod -> mod.getAttribute().getId().equals(oid));
-		userMods.forEach(mod -> {
+	private List<String> getNewValues(List<String> origValues, List<Modification> mods, String oid, int max) {
+		List<String> newValues = new ArrayList<>(origValues);
+		Stream<Modification> oidMods = mods.stream().filter(mod -> mod.getAttribute().getId().equals(oid));
+		oidMods.forEach(mod -> {
 			switch (mod.getOperation()) {
 			case ADD_ATTRIBUTE:
-				try {
-					newValues.add(mod.getAttribute().getString());
-				} catch (Exception e) {
-					LOG.error("getString should have been applicable");
+				for (Value<?> val : mod.getAttribute()) {
+					newValues.add(val.getString());
 				}
 				break;
 
 			case REMOVE_ATTRIBUTE:
-				newValues.add("");
+				for (Value<?> val : mod.getAttribute()) {
+					newValues.remove(val.getString());
+				}
 				break;
 
 			case REPLACE_ATTRIBUTE:
-				try {
-					newValues.add(mod.getAttribute().getString());
-				} catch (Exception e) {
-					LOG.error("getString should have been applicable");
+				newValues.clear();
+				for (Value<?> val : mod.getAttribute()) {
+					newValues.add(val.getString());
 				}
 				break;
 
