@@ -1,7 +1,6 @@
 package info.jagenberg.tim.apachedsgithub;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -28,8 +27,7 @@ public class GithubInterceptor extends BaseInterceptor {
 		gitHubConnector = new GitHubConnector();
 	}
 
-	public GithubInterceptor(GitHubConnector gitHubConnector) {
-		super();
+	public void setGitHubConnector(GitHubConnector gitHubConnector) {
 		this.gitHubConnector = gitHubConnector;
 	}
 
@@ -50,22 +48,6 @@ public class GithubInterceptor extends BaseInterceptor {
 	}
 
 	@Override
-	public void delete(final DeleteOperationContext deleteContext) throws LdapException {
-		Entry entry = deleteContext.getEntry();
-		if (ObjClassGitHubUser.isObjectClassGitHubUser(entry)) {
-			try {
-				String user = ObjClassGitHubUser.getUser(entry);
-				List<String> teams = ObjClassGitHubUser.getTeams(entry);
-				String org = ObjClassGitHubUser.getOrg(entry);
-				teams.stream().forEach(t -> gitHubConnector.removeUser(user, t, org));
-			} catch (IllegalArgumentException e) {
-				// don't interact with github if not all arguments are valid/set
-			}
-		}
-		next(deleteContext);
-	}
-
-	@Override
 	public void modify(final ModifyOperationContext modifyContext) throws LdapException {
 		Entry entry = modifyContext.getEntry();
 		if (ObjClassGitHubUser.isObjectClassGitHubUser(entry)) {
@@ -75,22 +57,21 @@ public class GithubInterceptor extends BaseInterceptor {
 			try {
 				oldUser = ObjClassGitHubUser.getUser(entry);
 			} catch (IllegalArgumentException e) {
-				LOG.warn("Attribute not set", e);
+				// leave empty if not set
 			}
 			try {
 				oldTeams = ObjClassGitHubUser.getTeams(entry);
 			} catch (IllegalArgumentException e) {
-				LOG.warn("Attribute not set", e);
+				// leave empty if not set
 			}
 			try {
 				oldOrg = ObjClassGitHubUser.getOrg(entry);
 			} catch (IllegalArgumentException e) {
-				LOG.warn("Attribute not set", e);
+				// leave empty if not set
 			}
 			String newUser = getNewUser(modifyContext.getModItems(), oldUser);
 			List<String> newTeams = getNewTeams(oldTeams, modifyContext.getModItems(), oldTeams);
 			String newOrg = getNewOrg(modifyContext.getModItems(), oldOrg);
-			// TODO this update logic needs to be improved!
 			boolean userChanged = oldUser != newUser;
 			List<String> addedTeams = ListUtils.subtract(newTeams, oldTeams);
 			List<String> removedTeams = ListUtils.subtract(oldTeams, newTeams);
@@ -106,13 +87,38 @@ public class GithubInterceptor extends BaseInterceptor {
 		next(modifyContext);
 	}
 
+	@Override
+	public void delete(final DeleteOperationContext deleteContext) throws LdapException {
+		Entry entry = deleteContext.getEntry();
+		if (ObjClassGitHubUser.isObjectClassGitHubUser(entry)) {
+			try {
+				String user = ObjClassGitHubUser.getUser(entry);
+				List<String> teams = ObjClassGitHubUser.getTeams(entry);
+				String org = ObjClassGitHubUser.getOrg(entry);
+				teams.stream().forEach(t -> removeUserFromTeam(user, t, org));
+			} catch (IllegalArgumentException e) {
+				// don't interact with github if not all arguments are valid/set
+			}
+		}
+		next(deleteContext);
+	}
+
+	private void removeUserFromTeam(String user, String t, String org) {
+		try {
+			gitHubConnector.removeUser(user, t, org);
+		} catch (IllegalArgumentException e) {
+			// ignore if we couldn't remove a user
+			LOG.debug("Could not remove " + user + " from " + t + " in " + org);
+		}
+	}
+
 	private void updateUserOrgTeams(String oldUser, List<String> oldTeams, String oldOrg, String newUser, List<String> newTeams, String newOrg) {
 		newTeams.stream().forEach(nt -> gitHubConnector.addUser(newUser, nt, newOrg));
 		oldTeams.stream().forEach(ot -> {
 			try {
 				gitHubConnector.removeUser(oldUser, ot, oldOrg);
 			} catch (IllegalArgumentException e) {
-				LOG.warn("Could not remove GitHub user", e);
+				LOG.debug("Could not remove GitHub user");
 			}
 		});
 	}
@@ -147,35 +153,49 @@ public class GithubInterceptor extends BaseInterceptor {
 	private List<String> getNewValues(List<String> origValues, List<Modification> mods, String oid, int max) {
 		List<String> newValues = new ArrayList<>(origValues);
 		Stream<Modification> oidMods = mods.stream().filter(mod -> mod.getAttribute().getId().equals(oid));
-		oidMods.forEach(mod -> {
-			switch (mod.getOperation()) {
-			case ADD_ATTRIBUTE:
-				for (Value<?> val : mod.getAttribute()) {
-					newValues.add(val.getString());
-				}
-				break;
-
-			case REMOVE_ATTRIBUTE:
-				for (Value<?> val : mod.getAttribute()) {
-					newValues.remove(val.getString());
-				}
-				break;
-
-			case REPLACE_ATTRIBUTE:
-				newValues.clear();
-				for (Value<?> val : mod.getAttribute()) {
-					newValues.add(val.getString());
-				}
-				break;
-
-			default:
-				break;
-			}
-		});
+		oidMods.forEach(mod -> applyMod(mod, newValues));
 		if (newValues.size() > max) {
-			throw new IllegalArgumentException("Only " + max + " " + ObjClassGitHubUser.attrLiterals.get(oid) + " allowed");
+			throw new IllegalArgumentException("Only " + max + " " + ObjClassGitHubUser.ATTR_LITERALS.get(oid) + " allowed");
 		}
 		return newValues;
+	}
+
+	private void applyMod(Modification mod, List<String> newValues) {
+		switch (mod.getOperation()) {
+		case ADD_ATTRIBUTE:
+			addAttributeValues(mod, newValues);
+			break;
+
+		case REMOVE_ATTRIBUTE:
+			removeAttributeValues(mod, newValues);
+			break;
+
+		case REPLACE_ATTRIBUTE:
+			replaceAttributeValues(mod, newValues);
+			break;
+
+		default:
+			break;
+		}
+	}
+
+	private void addAttributeValues(Modification mod, List<String> newValues) {
+		for (Value<?> val : mod.getAttribute()) {
+			newValues.add(val.getString());
+		}
+	}
+
+	private void removeAttributeValues(Modification mod, List<String> newValues) {
+		for (Value<?> val : mod.getAttribute()) {
+			newValues.remove(val.getString());
+		}
+	}
+
+	private void replaceAttributeValues(Modification mod, List<String> newValues) {
+		newValues.clear();
+		for (Value<?> val : mod.getAttribute()) {
+			newValues.add(val.getString());
+		}
 	}
 
 }

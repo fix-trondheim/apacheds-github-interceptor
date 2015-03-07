@@ -1,5 +1,6 @@
 package info.jagenberg.tim.apachedsgithub;
 
+import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 import java.io.IOException;
@@ -34,13 +35,13 @@ import org.mockito.Mockito;
 @ApplyLdifFiles({ "github.ldif" })
 public class GithubInterceptorTest extends AbstractLdapTestUnit {
 
-	GitHubConnector connector = Mockito.mock(GitHubConnector.class);
 	private LdapConnection connection = null;
+	private GithubInterceptor interceptor;
 
 	@Before
 	public void setUp() throws Exception {
 		List<Interceptor> interceptors = getService().getInterceptors();
-		GithubInterceptor interceptor = new GithubInterceptor(connector);
+		interceptor = new GithubInterceptor();
 		interceptor.init(getService());
 		interceptors.add(15, interceptor);
 		getService().setInterceptors(interceptors);
@@ -63,7 +64,28 @@ public class GithubInterceptorTest extends AbstractLdapTestUnit {
 	}
 
 	@Test
+	public void testAddUser() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
+		URL testFile = getClass().getResource("/testUser.ldif");
+	
+		try (LdifReader reader = new LdifReader(testFile.getPath())) {
+			LdifEntry entry = reader.next();
+			getConnection().add(entry.getEntry());
+		}
+	
+		verify(connector, never()).addUser("", "", "");
+		verifyNoMoreInteractions(connector);
+	
+		closeConnection();
+	}
+
+	@Test
 	public void testAddGitHubUserAllSet() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+		
 		URL testFile = getClass().getResource("/testGitHubUserAllSet.ldif");
 
 		try (LdifReader reader = new LdifReader(testFile.getPath())) {
@@ -79,6 +101,9 @@ public class GithubInterceptorTest extends AbstractLdapTestUnit {
 
 	@Test
 	public void testAddGitHubUserAllSetMultiTeam() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+		
 		URL testFile = getClass().getResource("/testGitHubUserAllSetMultiTeam.ldif");
 
 		try (LdifReader reader = new LdifReader(testFile.getPath())) {
@@ -96,6 +121,9 @@ public class GithubInterceptorTest extends AbstractLdapTestUnit {
 
 	@Test
 	public void testAddGitHubUserUnSet() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+		
 		URL testFile = getClass().getResource("/testGitHubUserUnSet.ldif");
 
 		try (LdifReader reader = new LdifReader(testFile.getPath())) {
@@ -110,23 +138,74 @@ public class GithubInterceptorTest extends AbstractLdapTestUnit {
 	}
 
 	@Test
-	public void testAddUser() throws LdapException, IOException {
-		URL testFile = getClass().getResource("/testUser.ldif");
+	@ApplyLdifFiles({ "test-data.ldif" })
+	public void testModifyGitHubUserAllSetMultiTeam() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
 
-		try (LdifReader reader = new LdifReader(testFile.getPath())) {
-			LdifEntry entry = reader.next();
-			getConnection().add(entry.getEntry());
-		}
-
-		verify(connector, never()).addUser("", "", "");
+		DefaultModification modification = new DefaultModification(ModificationOperation.REPLACE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_USER_ATTR_ID, "Test123");
+		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
+		
+		InOrder inOrder = inOrder(connector);
+		inOrder.verify(connector).addUser("Test123", "members", "fix-trondheim");
+		inOrder.verify(connector).addUser("Test123", "alumni", "fix-trondheim");
+		inOrder.verify(connector).removeUser("FIX-TestUser123", "members", "fix-trondheim");
+		inOrder.verify(connector).removeUser("FIX-TestUser123", "alumni", "fix-trondheim");
 		verifyNoMoreInteractions(connector);
+	
+		closeConnection();
+	}
 
+	@Test
+	@ApplyLdifFiles({ "test-data.ldif" })
+	public void testModifyGitHubUserAllSetMultiTeamWithExceptionInAdd() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		IllegalArgumentException wrongUserException = new IllegalArgumentException("Could not find user Test123");
+		doThrow(wrongUserException).when(connector).addUser(eq("Test123"), anyString(), anyString());
+		interceptor.setGitHubConnector(connector);
+
+		DefaultModification modification = new DefaultModification(ModificationOperation.REPLACE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_USER_ATTR_ID, "Test123");
+		try {
+			getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
+			fail("No exception for missing user");
+		} catch (Exception e) {
+			assertTrue(e.getMessage().contains("Could not find user Test123"));
+		}
+		
+		InOrder inOrder = inOrder(connector);
+		inOrder.verify(connector).addUser("Test123", "members", "fix-trondheim");
+		verifyNoMoreInteractions(connector);
+	
+		closeConnection();
+	}
+
+	@Test
+	@ApplyLdifFiles({ "test-data.ldif" })
+	public void testModifyGitHubUserAllSetMultiTeamWithExceptionInRemove() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		IllegalArgumentException wrongUserException = new IllegalArgumentException("Could not find user Test123");
+		doThrow(wrongUserException).when(connector).removeUser(eq("FIX-TestUser123"), anyString(), anyString());
+		interceptor.setGitHubConnector(connector);
+
+		DefaultModification modification = new DefaultModification(ModificationOperation.REPLACE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_USER_ATTR_ID, "Test123");
+		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
+		
+		InOrder inOrder = inOrder(connector);
+		inOrder.verify(connector).addUser("Test123", "members", "fix-trondheim");
+		inOrder.verify(connector).addUser("Test123", "alumni", "fix-trondheim");
+		inOrder.verify(connector).removeUser("FIX-TestUser123", "members", "fix-trondheim");
+		inOrder.verify(connector).removeUser("FIX-TestUser123", "alumni", "fix-trondheim");
+		verifyNoMoreInteractions(connector);
+	
 		closeConnection();
 	}
 
 	@Test
 	@ApplyLdifFiles({ "test-data.ldif" })
 	public void testRemoveGitHubUserAllSet() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
 		getConnection().delete("uid=testGitHubUserAllSet,dc=example,dc=com");
 
 		verify(connector).removeUser("FIX-TestUser123", "members", "fix-trondheim");
@@ -138,6 +217,9 @@ public class GithubInterceptorTest extends AbstractLdapTestUnit {
 	@Test
 	@ApplyLdifFiles({ "test-data.ldif" })
 	public void testRemoveGitHubUserAllSetMultiTeam() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
 		getConnection().delete("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com");
 
 		InOrder inOrder = inOrder(connector);
@@ -151,6 +233,9 @@ public class GithubInterceptorTest extends AbstractLdapTestUnit {
 	@Test
 	@ApplyLdifFiles({ "test-data.ldif" })
 	public void testRemoveGitHubUserUnSet() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
 		getConnection().delete("uid=testGitHubUserUnSet,dc=example,dc=com");
 
 		verify(connector, never()).removeUser("", "", "");
@@ -162,6 +247,9 @@ public class GithubInterceptorTest extends AbstractLdapTestUnit {
 	@Test
 	@ApplyLdifFiles({ "test-data.ldif" })
 	public void testRemoveUser() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
 		getConnection().delete("uid=testUser,dc=example,dc=com");
 
 		verify(connector, never()).removeUser("", "", "");
@@ -172,23 +260,78 @@ public class GithubInterceptorTest extends AbstractLdapTestUnit {
 
 	@Test
 	@ApplyLdifFiles({ "test-data.ldif" })
-	public void testModifyGitHubUserAllSetMultiTeam() throws LdapException, IOException {
-		DefaultModification modification = new DefaultModification(ModificationOperation.REPLACE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_USER_ATTR_ID, "Test123");
+	public void testAddGitHubTeamAllSetMultiTeam() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
+		DefaultModification modification = new DefaultModification(ModificationOperation.ADD_ATTRIBUTE, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, "testteam");
 		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
 		
 		InOrder inOrder = inOrder(connector);
+		inOrder.verify(connector).addUser("FIX-TestUser123", "testteam", "fix-trondheim");
+		verifyNoMoreInteractions(connector);
+	
+		closeConnection();
+	}
+
+	@Test
+	@ApplyLdifFiles({ "test-data.ldif" })
+	public void testModifyGitHubTeamAllSetMultiTeam() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
+		DefaultModification modification = new DefaultModification(ModificationOperation.REPLACE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, "members", "nonteam");
+		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
+		
+		InOrder inOrder = inOrder(connector);
+		inOrder.verify(connector).addUser("FIX-TestUser123", "nonteam", "fix-trondheim");
+		inOrder.verify(connector).removeUser("FIX-TestUser123", "alumni", "fix-trondheim");
+		verifyNoMoreInteractions(connector);
+	
+		closeConnection();
+	}
+
+	@Test
+	@ApplyLdifFiles({ "test-data.ldif" })
+	public void testRemoveGitHubTeamAllSetMultiTeam() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
+		DefaultModification modification = new DefaultModification(ModificationOperation.REMOVE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, "alumni");
+		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
+		
+		InOrder inOrder = inOrder(connector);
+		inOrder.verify(connector).removeUser("FIX-TestUser123", "alumni", "fix-trondheim");
+		verifyNoMoreInteractions(connector);
+	
+		closeConnection();
+	}
+
+	@Test
+	@ApplyLdifFiles({ "test-data.ldif" })
+	public void testRemoveGitHubTeamAndModifyGitHubUserAllSetMultiTeam() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
+		DefaultModification modificationTeam = new DefaultModification(ModificationOperation.REMOVE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, "alumni");
+		DefaultModification modificationUser = new DefaultModification(ModificationOperation.REPLACE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_USER_ATTR_ID, "Test123");
+		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modificationTeam, modificationUser);
+		
+		InOrder inOrder = inOrder(connector);
 		inOrder.verify(connector).addUser("Test123", "members", "fix-trondheim");
-		inOrder.verify(connector).addUser("Test123", "alumni", "fix-trondheim");
 		inOrder.verify(connector).removeUser("FIX-TestUser123", "members", "fix-trondheim");
 		inOrder.verify(connector).removeUser("FIX-TestUser123", "alumni", "fix-trondheim");
 		verifyNoMoreInteractions(connector);
-
+	
 		closeConnection();
 	}
 
 	@Test
 	@ApplyLdifFiles({ "test-data.ldif" })
 	public void testModifyGitHubOrgAllSetMultiTeam() throws LdapException, IOException {
+		GitHubConnector connector = Mockito.mock(GitHubConnector.class);
+		interceptor.setGitHubConnector(connector);
+
 		DefaultModification modification = new DefaultModification(ModificationOperation.REPLACE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_ORG_ATTR_ID, "some-other-org");
 		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
 		
@@ -201,61 +344,5 @@ public class GithubInterceptorTest extends AbstractLdapTestUnit {
 
 		closeConnection();
 	}
-
-	@Test
-	@ApplyLdifFiles({ "test-data.ldif" })
-	public void testAddGitHubTeamAllSetMultiTeam() throws LdapException, IOException {
-		DefaultModification modification = new DefaultModification(ModificationOperation.ADD_ATTRIBUTE, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, "testteam");
-		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
-		
-		InOrder inOrder = inOrder(connector);
-		inOrder.verify(connector).addUser("FIX-TestUser123", "testteam", "fix-trondheim");
-		verifyNoMoreInteractions(connector);
-
-		closeConnection();
-	}
-
-	@Test
-	@ApplyLdifFiles({ "test-data.ldif" })
-	public void testRemoveGitHubTeamAllSetMultiTeam() throws LdapException, IOException {
-		DefaultModification modification = new DefaultModification(ModificationOperation.REMOVE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, "alumni");
-		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
-		
-		InOrder inOrder = inOrder(connector);
-		inOrder.verify(connector).removeUser("FIX-TestUser123", "alumni", "fix-trondheim");
-		verifyNoMoreInteractions(connector);
-
-		closeConnection();
-	}
-
-	@Test
-	@ApplyLdifFiles({ "test-data.ldif" })
-	public void testModifyGitHubTeamAllSetMultiTeam() throws LdapException, IOException {
-		DefaultModification modification = new DefaultModification(ModificationOperation.REPLACE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, "members", "nonteam");
-		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modification);
-		
-		InOrder inOrder = inOrder(connector);
-		inOrder.verify(connector).addUser("FIX-TestUser123", "nonteam", "fix-trondheim");
-		inOrder.verify(connector).removeUser("FIX-TestUser123", "alumni", "fix-trondheim");
-		verifyNoMoreInteractions(connector);
-
-		closeConnection();
-	}
-
-	@Test
-	@ApplyLdifFiles({ "test-data.ldif" })
-	public void testRemoveGitHubTeamAndModifyGitHubUserAllSetMultiTeam() throws LdapException, IOException {
-		DefaultModification modificationTeam = new DefaultModification(ModificationOperation.REMOVE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID, "alumni");
-		DefaultModification modificationUser = new DefaultModification(ModificationOperation.REPLACE_ATTRIBUTE, ObjClassGitHubUser.GITHUB_USER_ATTR_ID, "Test123");
-		getConnection().modify("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com", modificationTeam, modificationUser);
-		
-		InOrder inOrder = inOrder(connector);
-		inOrder.verify(connector).addUser("Test123", "members", "fix-trondheim");
-		inOrder.verify(connector).removeUser("FIX-TestUser123", "members", "fix-trondheim");
-		inOrder.verify(connector).removeUser("FIX-TestUser123", "alumni", "fix-trondheim");
-		verifyNoMoreInteractions(connector);
-
-		closeConnection();
-	}
-
+	
 }

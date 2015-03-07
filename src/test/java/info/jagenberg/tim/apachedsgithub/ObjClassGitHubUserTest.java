@@ -79,7 +79,7 @@ public class ObjClassGitHubUserTest extends AbstractLdapTestUnit {
 			ObjClassGitHubUser.getUser(entryNoAttrsSet);
 			fail("Accessing unset attribute did not result in error");
 		} catch (IllegalArgumentException e) {
-			assertTrue("Wrong exception thrown", e.getMessage().contains(ObjClassGitHubUser.attrLiterals.get(ObjClassGitHubUser.GITHUB_USER_ATTR_ID)));
+			assertTrue("Wrong exception thrown", e.getMessage().contains(ObjClassGitHubUser.ATTR_LITERALS.get(ObjClassGitHubUser.GITHUB_USER_ATTR_ID)));
 		}
 
 		connection.close();
@@ -98,7 +98,7 @@ public class ObjClassGitHubUserTest extends AbstractLdapTestUnit {
 			ObjClassGitHubUser.getTeams(entryNoTeamSet);
 			fail("Accessing unset attribute did not result in error");
 		} catch (IllegalArgumentException e) {
-			assertTrue("Wrong exception thrown", e.getMessage().contains(ObjClassGitHubUser.attrLiterals.get(ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID)));
+			assertTrue("Wrong exception thrown", e.getMessage().contains(ObjClassGitHubUser.ATTR_LITERALS.get(ObjClassGitHubUser.GITHUB_TEAM_ATTR_ID)));
 		}
 
 		Entry entryMultipleTeamsSet = connection.lookup("uid=testGitHubUserAllSetMultiTeam,dc=example,dc=com");
@@ -120,7 +120,7 @@ public class ObjClassGitHubUserTest extends AbstractLdapTestUnit {
 			ObjClassGitHubUser.getOrg(entryNoAttrsSet);
 			fail("Accessing unset attribute did not result in error");
 		} catch (IllegalArgumentException e) {
-			assertTrue("Wrong exception thrown", e.getMessage().contains(ObjClassGitHubUser.attrLiterals.get(ObjClassGitHubUser.GITHUB_ORG_ATTR_ID)));
+			assertTrue("Wrong exception thrown", e.getMessage().contains(ObjClassGitHubUser.ATTR_LITERALS.get(ObjClassGitHubUser.GITHUB_ORG_ATTR_ID)));
 		}
 
 		connection.close();

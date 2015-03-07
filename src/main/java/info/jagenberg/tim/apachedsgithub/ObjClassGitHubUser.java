@@ -18,7 +18,7 @@ public class ObjClassGitHubUser {
 	public static final String GITHUB_USER_ATTR_ID = "2.25.338967291031856023576548935457224115483.1.1";
 	public static final String GITHUB_TEAM_ATTR_ID = "2.25.338967291031856023576548935457224115483.1.3";
 	public static final String GITHUB_ORG_ATTR_ID = "2.25.338967291031856023576548935457224115483.1.2";
-	public static Map<String, String> attrLiterals;
+	public static final Map<String, String> ATTR_LITERALS;
 
 	static {
 		Map<String, String> map = new HashMap<>();
@@ -26,14 +26,14 @@ public class ObjClassGitHubUser {
 		map.put(GITHUB_USER_ATTR_ID, "githubUserName");
 		map.put(GITHUB_TEAM_ATTR_ID, "githubTeamName");
 		map.put(GITHUB_ORG_ATTR_ID, "githubOrganizationName");
-		attrLiterals = Collections.unmodifiableMap(map);
+		ATTR_LITERALS = Collections.unmodifiableMap(map);
 	}
 
 	private ObjClassGitHubUser() {
 	}
 
 	public static boolean isObjectClassGitHubUser(Entry entry) {
-		return entry.contains(OBJCLASS_ATTR_ID, attrLiterals.get(OBJCLASS_ATTR_ID));
+		return entry.contains(OBJCLASS_ATTR_ID, ATTR_LITERALS.get(OBJCLASS_ATTR_ID));
 	}
 
 	public static boolean hasAllGitHubAttributesSet(Entry entry) {
@@ -64,11 +64,11 @@ public class ObjClassGitHubUser {
 		try {
 			Attribute attribute = githubEntry.get(new AttributeType(attrID));
 			if (attribute == null) {
-				throw new IllegalArgumentException("Attribute " + attrLiterals.get(attrID) + " is not set");
+				throw new IllegalArgumentException("Attribute " + ATTR_LITERALS.get(attrID) + " is not set");
 			}
 			value = attribute.getString();
 		} catch (LdapInvalidAttributeValueException e) {
-			throw new IllegalArgumentException("Could not find attribute " + attrLiterals.get(attrID), e);
+			throw new IllegalArgumentException("Could not find attribute " + ATTR_LITERALS.get(attrID), e);
 		}
 		return value;
 	}
@@ -77,7 +77,7 @@ public class ObjClassGitHubUser {
 		List<String> values = new ArrayList<>();
 		Attribute attribute = githubEntry.get(new AttributeType(attrID));
 		if (attribute == null) {
-			throw new IllegalArgumentException("Attribute " + attrLiterals.get(attrID) + " is not set");
+			throw new IllegalArgumentException("Attribute " + ATTR_LITERALS.get(attrID) + " is not set");
 		}
 		for (Value<?> value : attribute) {
 			values.add(value.getString());

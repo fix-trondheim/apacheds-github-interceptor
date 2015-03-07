@@ -11,6 +11,7 @@ import org.kohsuke.github.GitHub;
 
 public class GitHubConnector {
 
+	private static final String GITHUB_CONNECTION_ERROR_MSG = "Could not connect to GitHub";
 	private GitHub github;
 	private boolean connected;
 
@@ -34,7 +35,7 @@ public class GitHubConnector {
 				throw new IllegalArgumentException("Could not add " + user + " to " + team + " in " + org, e);
 			}
 		} else {
-			throw new IllegalStateException("Could not connect to GitHub");
+			throw new IllegalStateException(GITHUB_CONNECTION_ERROR_MSG);
 		}
 	}
 
@@ -49,7 +50,7 @@ public class GitHubConnector {
 				throw new IllegalArgumentException("Could not remove " + user + " from " + team + " in " + org, e);
 			}
 		} else {
-			throw new IllegalStateException("Could not connect to GitHub");
+			throw new IllegalStateException(GITHUB_CONNECTION_ERROR_MSG);
 		}
 	}
 
@@ -64,7 +65,7 @@ public class GitHubConnector {
 				return false;
 			}
 		} else {
-			throw new IllegalStateException("Could not connect to GitHub");
+			throw new IllegalStateException(GITHUB_CONNECTION_ERROR_MSG);
 		}
 	}
 
@@ -74,11 +75,11 @@ public class GitHubConnector {
 				github.getUser(user);
 				return true;
 			} catch (IOException e) {
+				return false;
 			}
 		} else {
-			throw new IllegalStateException("Could not connect to GitHub");
+			throw new IllegalStateException(GITHUB_CONNECTION_ERROR_MSG);
 		}
-		return false;
 	}
 
 	private GHOrganization getOrg(String org) {
